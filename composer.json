@@ -15,5 +15,7 @@
             "MGGFLOW\\VK\\": "src"
         }
     },
-    "require": {}
+    "require": {
+        "php": ">=5.4"
+    }
 }
