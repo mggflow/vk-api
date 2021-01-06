@@ -1,7 +1,7 @@
 <?php
 
 
-namespace VK;
+namespace MGGFLOW\VK;
 
 
 class API
