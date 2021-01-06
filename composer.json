@@ -1,0 +1,19 @@
+{
+    "name": "mggflow/vk-api",
+    "description": "Accept to send requests to VK API by access_token",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Deusagnis",
+            "email": "deusagnis@gmail.com"
+        }
+    ],
+    "minimum-stability": "dev",
+    "autoload": {
+        "psr-4": {
+            "MGGFLOW\\VK\\": "src"
+        }
+    },
+    "require": {}
+}

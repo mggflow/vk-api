@@ -226,9 +226,9 @@ class API
             return ($jsonDecode)
                 ? json_decode($out,$jsonDecodeAssoc)
                 : $out;
-        } else {
-            return false;
         }
+
+        return false;
     }
 
     /**
