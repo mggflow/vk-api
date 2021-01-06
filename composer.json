@@ -5,8 +5,10 @@
     "license": "MIT",
     "authors": [
         {
-            "name": "Deusagnis",
-            "email": "deusagnis@gmail.com"
+            "name": "Pavel Eliseev",
+            "email": "deusagnis@gmail.com",
+            "homepage": "https://mggflow.in",
+            "role": "Developer"
         }
     ],
     "minimum-stability": "dev",
