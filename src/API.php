@@ -114,7 +114,7 @@ class API
      * @param int $attempts
      * @param false $wait
      * @param int $attempt
-     * @return false|object
+     * @return false|object|array
      */
     public function exploreResponse(&$response, $try = false, $attempts = 3, $wait = false, $attempt = 0)
     {
