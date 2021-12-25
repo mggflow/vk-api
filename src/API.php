@@ -194,7 +194,7 @@ class API
      */
     protected function genMethodFullName()
     {
-        $this->methodName = $this->methodArea . '.' . $this->methodName;
+        $this->methodFullName = $this->methodArea . '.' . $this->methodName;
     }
 
     /**
