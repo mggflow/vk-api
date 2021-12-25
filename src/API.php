@@ -36,35 +36,46 @@ class API
      * Используемая версия API
      * @var float
      */
-    public $version = 5.106;
+    public $version = 5.131;
+
+    /**
+     * Токен доступа к API
+     * @var string
+     */
+    protected $token;
     /**
      * Массив парамтеров запроса
      * @var array
      */
-    protected $methodParams;
+    protected $methodParams = [];
     /**
      * Назвение метода
      * @var string
      */
     protected $methodName;
     /**
-     * Токен доступа к API
-     * @var string
-     */
-    protected $token;
-
-    /**
      * Название области метода
      * @var string
      */
     protected $methodArea;
+    /**
+     * Полное название метода АПИ
+     * @var string
+     */
+    protected $methodFullName = '';
+
+    /**
+     * Последний полученный ответ
+     * @var object|null
+     */
+    public $response;
 
     /**
      * Конструктор с возможностью задать токен доступа и используемую версию
      * @param false|string $token
      * @param false|float $apiVersion
      */
-    public function __construct($token = false,$apiVersion=false)
+    public function __construct($token = false, $apiVersion = false)
     {
         if (!empty($token)) {
             $this->setToken($token);
@@ -108,20 +119,19 @@ class API
     }
 
     /**
-     * Анализирует ответ API ВК, позволяет обработать ошибки с лимитами и добиться разультата в несколько попыток
-     * @param $response
+     * Анализирует ответ API ВК, позволяет обработать ошибки с лимитами и добиться результата в несколько попыток
      * @param false $try
      * @param int $attempts
      * @param false $wait
      * @param int $attempt
      * @return false|object|array
      */
-    public function exploreResponse(&$response, $try = false, $attempts = 3, $wait = false, $attempt = 0)
+    public function exploreResponse(bool $try = false, int $attempts = 3, bool $wait = false, int $attempt = 0)
     {
-        if (isset($response->response)) {
-            return $response->response;
-        } elseif (isset($response->error)) {
-            $errorCode = $response->error->error_code;
+        if (isset($this->response->response)) {
+            return $this->response->response;
+        } elseif (isset($this->response->error)) {
+            $errorCode = $this->response->error->error_code;
             if ($try) {
                 if ($wait) {
                     $waitTime = $this->calcWaitTime($errorCode);
@@ -129,9 +139,7 @@ class API
                     usleep($waitTime);
                 }
                 if ($attempt < $attempts) {
-                    $response = $this->execute();
-
-                    return $this->exploreResponse($response, $try, $attempts, $wait, $attempt + 1);
+                    return $this->execute()->exploreResponse($try, $attempts, $wait, $attempt + 1);
                 }
             }
         }
@@ -165,54 +173,60 @@ class API
 
     /**
      * Выполняет текущий запрос к API
-     * @return mixed
+     * @return self
      */
-    protected function execute()
+    protected function execute(): self
     {
-        $methodFullName = $this->genMethodFullName($this->methodName);
+        $this->genMethodFullName();
 
         $startRequest = microtime(true);
-        $response = $this->uniMethod($methodFullName, $this->methodParams);
+        $this->response = $this->uniMethod();
         $endRequest = microtime(true);
         $elapsedTime = $endRequest - $startRequest;
 
-        $this->handleResponse($methodFullName, $response, $elapsedTime);
+        $this->collectResponseMetadata($elapsedTime);
 
-        return $response;
+        return $this;
     }
 
     /**
      * Генератор полного имени метода
-     * @param $methodName
-     * @return string
      */
-    protected function genMethodFullName($methodName)
+    protected function genMethodFullName()
     {
-        return $this->methodArea . '.' . $methodName;
+        $this->methodName = $this->methodArea . '.' . $this->methodName;
     }
 
     /**
      * Метод отправки запроса
-     * @param $methodFullName
-     * @param $post
      * @return mixed
      */
-    protected function uniMethod($methodFullName, $post)
+    protected function uniMethod()
     {
-        $request_url = 'https://api.vk.com/method/' . $methodFullName;
-        $this->providePost($post);
+        $request_url = 'https://api.vk.com/method/' . $this->methodFullName;
+        $this->providePost($this->methodParams);
 
         if ($this->useCurl) {
-            $data = $this->curlPost($request_url, $post);
+            $data = $this->curlPost($request_url, $this->methodParams);
         } else {
-            $query = http_build_query($post);
+            $query = http_build_query($this->methodParams);
             $data = file_get_contents($request_url . '?' . $query);
         }
 
         return json_decode($data);
     }
 
-    protected function curlPost($url,$post,$timeout=60,$jsonDecode=false,$jsonDecodeAssoc=false){
+    /**
+     * Отправить запрос с помощью Curl.
+     * @param $url
+     * @param $post
+     * @param int $timeout
+     * @param false $jsonDecode
+     * @param false $jsonDecodeAssoc
+     * @return bool|mixed|string
+     */
+    protected function curlPost($url, $post, int $timeout = 60, bool $jsonDecode = false, bool $jsonDecodeAssoc = false)
+    {
         $curl = curl_init();
         curl_setopt($curl, CURLOPT_URL, $url);
         curl_setopt($curl, CURLOPT_TIMEOUT, $timeout);
@@ -224,7 +238,7 @@ class API
         curl_close($curl);
         if ($out) {
             return ($jsonDecode)
-                ? json_decode($out,$jsonDecodeAssoc)
+                ? json_decode($out, $jsonDecodeAssoc)
                 : $out;
         }
 
@@ -244,53 +258,47 @@ class API
 
     /**
      * Обрабатывает ответ апи ВК
-     * @param $methodFullName
-     * @param $response
      * @param $elapsedTime
      */
-    protected function handleResponse($methodFullName, $response, $elapsedTime)
+    protected function collectResponseMetadata($elapsedTime)
     {
-        $errorIndex = $this->provideError($methodFullName, $response);
+        $errorIndex = $this->collectError();
 
-        $logIndex = $this->provideLog($methodFullName, $errorIndex, $elapsedTime);
-
+        $logIndex = $this->logResponse($errorIndex, $elapsedTime);
         $logNote = $this->log[$logIndex];
-        $this->addStatistic($logNote['method'], $logNote['result'], $logNote['elapsedTime']);
+
+        $this->addStatistic($logNote['result'], $logNote['elapsedTime']);
     }
 
     /**
      * Обеспечение учёта ошибки из ответа API
-     * @param $methodFullName
-     * @param $response
      * @return false|int
      */
-    protected function provideError($methodFullName, $response)
+    protected function collectError()
     {
-        if (!isset($response->error) and !empty($response->response)) return false;
+        if (!isset($this->response->error) and !empty($this->response->response)) return false;
 
-        $error = $this->createError($methodFullName, $response);
+        $error = $this->createResponseError();
 
         return $this->addError($error);
     }
 
     /**
      * Создание массива ошибки
-     * @param $methodFullName
-     * @param $response
      * @return array
      */
-    protected function createError($methodFullName, $response)
+    protected function createResponseError(): array
     {
         $error = [
-            'method' => $methodFullName,
+            'method' => $this->methodFullName,
             'params' => false,
             'timestamp' => microtime(true),
         ];
-        if (isset($response->error)) {
-            $error['code'] = $response->error->error_code;
-            $error['message'] = $response->error->error_msg;
+        if (isset($this->response->error)) {
+            $error['code'] = $this->response->error->error_code;
+            $error['message'] = $this->response->error->error_msg;
             if ($this->extendedErrors) {
-                $error['params'] = $response->error->request_params;
+                $error['params'] = $this->response->error->request_params;
             }
         } else {
             $error['code'] = -1;
@@ -302,10 +310,10 @@ class API
 
     /**
      * Метод добавления ошибки
-     * @param $error
+     * @param array $error
      * @return int
      */
-    protected function addError($error)
+    protected function addError(array $error): int
     {
         $counter = array_push($this->errors, $error);
         return ($counter - 1);
@@ -313,15 +321,14 @@ class API
 
     /**
      * Регистрирует выполнения запроса в логе
-     * @param $methodFullName
      * @param $errorIndex
      * @param $elapsedTime
      * @return int
      */
-    protected function provideLog($methodFullName, $errorIndex, $elapsedTime)
+    protected function logResponse($errorIndex, $elapsedTime): int
     {
         $logNote = [
-            'method' => $methodFullName,
+            'method' => $this->methodFullName,
             'elapsedTime' => $elapsedTime,
             'timestamp' => microtime(true),
         ];
@@ -341,7 +348,7 @@ class API
      * @param $note
      * @return int
      */
-    protected function addLogNote($note)
+    protected function addLogNote($note): int
     {
         $counter = array_push($this->log, $note);
         return ($counter - 1);
@@ -349,24 +356,23 @@ class API
 
     /**
      * Учёт результата выполнения запроса для статистики
-     * @param $methodFullName
      * @param $result
      * @param $elapsedTime
      */
-    protected function addStatistic($methodFullName, $result, $elapsedTime)
+    protected function addStatistic($result, $elapsedTime)
     {
-        if (!isset($this->statistic[$methodFullName])) $this->statistic[$methodFullName] = [
+        if (!isset($this->statistic[$this->methodFullName])) $this->statistic[$this->methodFullName] = [
             'successCounter' => 0,
             'successTime' => 0,
             'failCounter' => 0,
             'failTime' => 0,
         ];
         if ($result) {
-            $this->statistic[$methodFullName]['successCounter']++;
-            $this->statistic[$methodFullName]['successTime'] += $elapsedTime;
+            $this->statistic[$this->methodFullName]['successCounter']++;
+            $this->statistic[$this->methodFullName]['successTime'] += $elapsedTime;
         } else {
-            $this->statistic[$methodFullName]['failCounter']++;
-            $this->statistic[$methodFullName]['failTime'] += $elapsedTime;
+            $this->statistic[$this->methodFullName]['failCounter']++;
+            $this->statistic[$this->methodFullName]['failTime'] += $elapsedTime;
         }
     }
 
@@ -374,12 +380,12 @@ class API
      * Магический метод вызова метода API, выполняющий его
      * @param $methodName
      * @param $arguments
-     * @return mixed
+     * @return self
      */
-    public function __call($methodName, $arguments)
+    public function __call($methodName, $arguments): self
     {
         $this->methodName = $methodName;
-        $this->methodParams = $arguments[0];
+        $this->methodParams = $arguments[0] ?? [];
 
         return $this->execute();
     }

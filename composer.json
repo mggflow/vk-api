@@ -18,7 +18,8 @@
         }
     },
     "require": {
-        "php": ">=5.4",
-        "ext-json": "*"
+        "php": ">=7.0",
+        "ext-json": "*",
+        "ext-curl": "*"
     }
 }
