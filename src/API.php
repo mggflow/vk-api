@@ -126,7 +126,7 @@ class API
      * @param int $attempt
      * @return false|object|array
      */
-    public function exploreResponse(bool $try = false, int $attempts = 3, bool $wait = false, int $attempt = 0)
+    public function explore(bool $try = false, int $attempts = 3, bool $wait = false, int $attempt = 0)
     {
         if (isset($this->response->response)) {
             return $this->response->response;
@@ -139,7 +139,7 @@ class API
                     usleep($waitTime);
                 }
                 if ($attempt < $attempts) {
-                    return $this->execute()->exploreResponse($try, $attempts, $wait, $attempt + 1);
+                    return $this->execute()->explore($try, $attempts, $wait, $attempt + 1);
                 }
             }
         }
